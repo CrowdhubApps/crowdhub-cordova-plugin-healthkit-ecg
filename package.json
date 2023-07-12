@@ -1,0 +1,17 @@
+{
+	"version": "0.1.0",
+	"name": "crowdhub-cordova-plugin-healthkit-ecg",
+	"author": "Austin Isakson",
+	"description": "Interact with the iOS HealthKit ECG SDK.",
+	"license": "MIT",
+	"keywords": [
+		"Health",
+		"HealthKit"
+	],
+	"cordova": {
+		"id": "cordova-plugin-healthkit-ecg",
+		"platforms": [
+			"ios"
+		]
+	}
+}
