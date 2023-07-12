@@ -15,8 +15,6 @@ Make sure you have the proper NS strings in your Info.plist to request the user'
 
 ```javascript
 window.HealthKitECG.getLatestECG(
-  // first arg should be empty
-  "",
   (data) => {
     /**
      * On success, data will be an object with the following properties:
