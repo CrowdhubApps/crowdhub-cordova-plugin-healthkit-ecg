@@ -19,6 +19,7 @@ class HealthKitECG : CDVPlugin {
                 if !success {
                     print(error?.localizedDescription as Any)
                 } else {
+                    
                     let ecgQuery = HKSampleQuery(sampleType: ecgType,
                                                  predicate: nil,
                                                  limit: HKObjectQueryNoLimit,
@@ -32,14 +33,17 @@ class HealthKitECG : CDVPlugin {
                             fatalError("*** Unable to convert \(String(describing: samples)) to [HKElectrocardiogram] ***")
                         }
                         
-                        if let sample = ecgSamples.last {
+                        var last5Samples: [[String: Any]] = []
+                        let dispatchGroup = DispatchGroup()
+                        
+                        for sample in ecgSamples.suffix(5) {
                             let startDate = sample.startDate.timeIntervalSince1970
                             let endDate = sample.endDate.timeIntervalSince1970
                             let totalMeasurements = sample.numberOfVoltageMeasurements
                             let samplingFrequency = sample.samplingFrequency?.doubleValue(for: HKUnit.hertzUnit(with: HKMetricPrefix.none))
                             let avgHeartRate = sample.averageHeartRate?.doubleValue(for: HKUnit.count().unitDivided(by: HKUnit.minute()))
                             var voltageMeasurements = Array<Double>()
-
+                            
                             let voltageQuery = HKElectrocardiogramQuery(sample) { (query, result) in
                                 switch(result) {
                                     
@@ -50,10 +54,9 @@ class HealthKitECG : CDVPlugin {
                                     
                                 case .done:
                                     // No more voltage measurements. Finish processing the existing measurements.
-                                    let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: ["startDate":startDate, "endDate":endDate, "totalMeasurements":totalMeasurements, "samplingFrequency":samplingFrequency, "avgHeartRate":avgHeartRate, "voltages":voltageMeasurements])
-                                    self.commandDelegate.send(result, callbackId: command.callbackId)
+                                    last5Samples.insert(["startDate":startDate, "endDate":endDate, "totalMeasurements":totalMeasurements, "samplingFrequency":samplingFrequency, "avgHeartRate":avgHeartRate, "voltages":voltageMeasurements], at: 0)
+                                    dispatchGroup.leave()
                                     return
-                                    
                                     
                                 case .error(let error):
                                     // Handle the error here.
@@ -66,10 +69,16 @@ class HealthKitECG : CDVPlugin {
                                     
                                 }
                             }
-    
+                            
+                            dispatchGroup.enter()
                             healthStore.execute(voltageQuery)
                         }
                         
+                        dispatchGroup.notify(queue: .main) {
+                            let result = CDVPluginResult(status: CDVCommandStatus_OK, messageAs: last5Samples)
+                            self.commandDelegate.send(result, callbackId: command.callbackId)
+                            
+                        }
                     }
                     
                     
@@ -79,9 +88,7 @@ class HealthKitECG : CDVPlugin {
                     healthStore.execute(ecgQuery)
                 }
             }
-            
-        }
-        else {
+        } else {
             print("nope!")
         }
         
