@@ -14,23 +14,30 @@ class HealthKitECG : CDVPlugin {
             
             let shareTypes = Set<HKSampleType>()
             let readTypes = Set([ecgType])
+            let sortType = [NSSortDescriptor.init(key: "startDate", ascending: false)]
             
             healthStore.requestAuthorization(toShare:shareTypes, read: readTypes) { (success, error) in
                 if !success {
                     print(error?.localizedDescription as Any)
+                    let result = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: "Error requesting Health Store authorization:"+(error?.localizedDescription ?? ""))
+                    self.commandDelegate.send(result, callbackId: command.callbackId)
+                    return
                 } else {
-                    
                     let ecgQuery = HKSampleQuery(sampleType: ecgType,
                                                  predicate: nil,
-                                                 limit: HKObjectQueryNoLimit,
-                                                 sortDescriptors: nil) { (query, samples, error) in
+                                                 limit: 5,
+                                                 sortDescriptors: sortType)
+                                                 { (query, samples, error) in
                         if let error = error {
-                            // Handle the error here.
-                            fatalError("*** An error occurred \(error.localizedDescription) ***")
+                            let result = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: "ECG Query error occurred.")
+                            self.commandDelegate.send(result, callbackId: command.callbackId)
+                            return
                         }
                         
                         guard let ecgSamples = samples as? [HKElectrocardiogram] else {
-                            fatalError("*** Unable to convert \(String(describing: samples)) to [HKElectrocardiogram] ***")
+                            let result = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: "Unable to convert ECG Samples to HKElectrocardiograms.")
+                            self.commandDelegate.send(result, callbackId: command.callbackId)
+                            return
                         }
                         
                         var last5Samples: [[String: Any]] = []
@@ -40,8 +47,18 @@ class HealthKitECG : CDVPlugin {
                             let startDate = sample.startDate.timeIntervalSince1970
                             let endDate = sample.endDate.timeIntervalSince1970
                             let totalMeasurements = sample.numberOfVoltageMeasurements
-                            let samplingFrequency = sample.samplingFrequency?.doubleValue(for: HKUnit.hertzUnit(with: HKMetricPrefix.none))
-                            let avgHeartRate = sample.averageHeartRate?.doubleValue(for: HKUnit.count().unitDivided(by: HKUnit.minute()))
+                            guard let samplingFrequency = sample.samplingFrequency?.doubleValue(for: HKUnit.hertzUnit(with: HKMetricPrefix.none)) else {
+                                let result = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: "Sampling Frequency not available.")
+                                self.commandDelegate.send(result, callbackId: command.callbackId)
+                                return
+                            }
+                            
+                            guard let avgHeartRate = sample.averageHeartRate?.doubleValue(for: HKUnit.count().unitDivided(by: HKUnit.minute())) else {
+                                let result = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: "Average Heart Rate not available.")
+                                self.commandDelegate.send(result, callbackId: command.callbackId)
+                                return
+                            }
+                                    
                             var voltageMeasurements = Array<Double>()
                             
                             let voltageQuery = HKElectrocardiogramQuery(sample) { (query, result) in
@@ -53,9 +70,14 @@ class HealthKitECG : CDVPlugin {
                                     }
                                     
                                 case .done:
-                                    // No more voltage measurements. Finish processing the existing measurements.
-                                    last5Samples.insert(["startDate":startDate, "endDate":endDate, "totalMeasurements":totalMeasurements, "samplingFrequency":samplingFrequency, "avgHeartRate":avgHeartRate, "voltages":voltageMeasurements], at: 0)
-                                    dispatchGroup.leave()
+                                    last5Samples.insert([
+                                        "startDate":startDate,
+                                        "endDate":endDate,
+                                        "totalMeasurements":totalMeasurements,
+                                        "samplingFrequency":samplingFrequency,
+                                        "avgHeartRate":avgHeartRate,
+                                        "voltages":voltageMeasurements],
+                                        at: 0)
                                     return
                                     
                                 case .error(let error):
@@ -70,7 +92,6 @@ class HealthKitECG : CDVPlugin {
                                 }
                             }
                             
-                            dispatchGroup.enter()
                             healthStore.execute(voltageQuery)
                         }
                         
@@ -81,15 +102,13 @@ class HealthKitECG : CDVPlugin {
                         }
                     }
                     
-                    
-                    print("Executing ECG Query")
-                    
                     // Execute the query.
                     healthStore.execute(ecgQuery)
                 }
             }
         } else {
-            print("nope!")
+            let result = CDVPluginResult(status: CDVCommandStatus_ERROR, messageAs: "Health Kit Health Store Health Data is not available.")
+            self.commandDelegate.send(result, callbackId: command.callbackId)
         }
         
     }
